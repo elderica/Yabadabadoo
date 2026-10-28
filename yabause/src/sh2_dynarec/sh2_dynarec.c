@@ -7431,7 +7431,11 @@ int sh2_recompile_block(int addr)
              itype[i+1]==RMW || itype[i+1]==PCREL ||
              itype[i+1]==SYSTEM || source[i]==0x002B /* RTE */ )
             temp1=MOREG;
-          if(itype[i+1]==COMPLEX) {
+          // MAC.L/MAC.W in the delay slot: the accumulator in branch_regs.
+          // Not in regs[i]: the slot loads it itself, and kept there while
+          // culled before the branch it would be a register never loaded
+          // (with a stale dirty bit, written back as MACH/MACL).
+          if(itype[i+1]==COMPLEX&&(opcode[i+1]|4)==4&&opcode2[i+1]==15) {
             temp1=MACH;
             temp2=MACL;
           }
@@ -7441,8 +7445,7 @@ int sh2_recompile_block(int addr)
              regs[i].regmap[hr]!=rt1[i+1] && regs[i].regmap[hr]!=rt2[i+1] &&
              regs[i].regmap[hr]!=RHASH && regs[i].regmap[hr]!=RHTBL &&
              regs[i].regmap[hr]!=RTEMP && regs[i].regmap[hr]!=PTEMP &&
-             regs[i].regmap[hr]!=CCREG &&
-             regs[i].regmap[hr]!=temp1 && regs[i].regmap[hr]!=temp2 )
+             regs[i].regmap[hr]!=CCREG )
           {
             regs[i].regmap[hr]=-1;
             regs[i].isdoingcp&=~(1<<hr);
@@ -7481,7 +7484,7 @@ int sh2_recompile_block(int addr)
             if(itype[i]==LOAD || itype[i]==STORE || itype[i]==RMW ||
                itype[i]==PCREL || itype[i]==SYSTEM )
               temp1=MOREG;
-            if(itype[i]==COMPLEX) {
+            if(itype[i]==COMPLEX&&(opcode[i]|4)==4&&opcode2[i]==15) { // MAC.L/MAC.W
               temp1=MACH;
               temp2=MACL;
             }
