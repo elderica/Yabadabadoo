@@ -808,62 +808,14 @@ WriteInvalidateByte:
 	.global	div1
 	.type	div1, %function
 div1:
-	/* r0 = dividend */
-	/* r1 = divisor */
+	/* r0 = dividend (Rn) */
+	/* r1 = divisor (Rm), kept */
 	/* r2 = sr */
-	tst	r2, #0x200
-	bne	div1_negative_divisor
-	lsrs	r2, r2, #1 /* Get T bit and shift out */
-	adcs	r0, r0, r0 /* rn=(rn<<1)+T */
-	adc	r3, r3, r3 /* New Q in r3 */
-	mov	r4, r1     /* divisor (rm) */
-	tst	r2, #0x80  /* Get (shifted) Q bit */
-	mov	r5, #1
-	rsbeq	r4, r1, #0 /* inverted if old_Q clear */
-	moveq	r5, #0     /* 0 if old_Q clear, 1 otherwise */
-	adds	r0, r4, r0 /* rn+rm if old_Q, rn-rm if !old_Q */
-		           /* carry set if rn < old_rn */
-	adc	r3, r5, r3 /* low bit = (rn<old_rn)^new_Q^old_Q */
-	                   /* inverted for old_Q==1, ie (rn>=old_rn)^new_Q */
-	orr	r2, r2, #0x80 /* set (shifted) Q bit */
-	and	r3, r3, #1
-	orrs	r5, r4, r5 /* zero if old_Q==0 && rn==old_rn */
-	eoreq	r3, r3, #1 /* invert result for old_Q==0 && rn==old_rn */
-	orr	r2, r3, r2, lsl #1 /* New T = (Q==M) */
-	eor	r2, r2, r3, lsl #8 /* save new Q (=!T) */
-/*
-	mov	r4, r0
-	mov	r5, r1
-	mov	r6, r2
-	mov	r7, r14
-	bl	debug_division
-	mov	r0, r4
-	mov	r1, r5
-	mov	r2, r6
-	mov	r14, r7
-*/
-	mov	pc, lr
-div1_negative_divisor:
-	lsrs	r2, r2, #1 /* Get T bit and shift out */
-	adcs	r0, r0, r0 /* rn=(rn<<1)+T */
-	adc	r3, r3, r3 /* New Q in r3 */
-	mov	r4, r1     /* divisor (rm) */
-	tst	r2, #0x80  /* Get (shifted) Q bit */
-	mov	r5, #1
-	rsbne	r4, r1, #0 /* inverted if old_Q clear */
-	movne	r5, #0     /* 0 if old_Q set, 1 otherwise */
-	adds	r0, r4, r0 /* rn+rm if !old_Q, rn-rm if old_Q */
-		           /* carry set if rn < old_rn */
-	adc	r3, r5, r3 /* low bit = (rn<old_rn)^new_Q^old_Q */
-	                   /* inverted for old_Q==1, ie (rn>=old_rn)^new_Q */
-	bic	r2, r2, #0x80 /* clear (shifted) Q bit */
-	and	r3, r3, #1
-	orrs	r5, r4, r5 /* zero if old_Q==1 && rn==old_rn */
-	/*eoreq	r3, r3, #1 /* invert result for old_Q==1 && rn==old_rn */
-	eorne	r3, r3, #1 /* don't invert result for old_Q==1 && rn==old_rn */
-	orr	r2, r3, r2, lsl #1 /* New T = (Q==M) */
-	orr	r2, r2, r3, lsl #8 /* save new Q (=T) */
-	mov	pc, lr
+	/* DynarecDiv1 (sh2_dynarec.c) returns Rn in r0 and SR in r1 */
+	push	{r1, lr}
+	bl	DynarecDiv1
+	mov	r2, r1
+	pop	{r1, pc}
 	.size	div1, .-div1
 
 	.align	2
@@ -871,125 +823,29 @@ div1_negative_divisor:
 	.type	macl, %function
 macl:
 	/* r4 = sr */
-	/* r5 = multiplicand address */
-	/* r6 = multiplicand address */
+	/* r5 = multiplicand address (Rm) */
+	/* r6 = multiplicand address (Rn) */
 	/* r0 = return MACL */
 	/* r1 = return MACH */
-	/* Operands in mapped memory (work RAM, BIOS, the data array) are read
-	   directly, as generated loads do: memory_map[addr>>12] >= 0 gives the
-	   host address addr + entry*4, a long there is stored halfword-swapped.
-	   Anything else goes through DynarecReadLong, in the same order. */
-	mov	r7, r14
-	mov	r8, r0 /* MACL */
-	mov	r9, r1 /* MACH */
-	ldr	r2, .macmmptr
-	lsr	r3, r6, #12
-	ldr	r3, [r2, r3, lsl #2]
-	tst	r3, r3
-	bmi	1f
-	ldr	r10, [r6, r3, lsl #2]
-	ror	r10, r10, #16
-	b	2f
-1:
-	mov	r0, r6
-	bl	DynarecReadLong
-	mov	r10, r0
-	ldr	r2, .macmmptr
-2:
-	lsr	r3, r5, #12
-	ldr	r3, [r2, r3, lsl #2]
-	tst	r3, r3
-	bmi	3f
-	ldr	r12, [r5, r3, lsl #2]
-	ror	r12, r12, #16
-	b	4f
-3:
-	mov	r0, r5
-	bl	DynarecReadLong
-	mov	r12, r0
-4:
-	add	r5, r5, #4
-	add	r6, r6, #4
-	mov	r0, r8
-	mov	r1, r9
-	mov	r14, r7
-	smlal	r0, r1, r10, r12
-	tst	r4, #2
-	moveq	pc, lr
-macl_saturation:
-	cmn	r1, #0x8000
-	mov	r7, #0x8000
-	movlt	r0, #0
-	rsblt	r1, r7, #0
-	cmp	r1, #0x8000
-	mvnge	r0, #0
-	subge	r1, r7, #1
-	mov	pc, lr
+	/* DynarecMacL (sh2_dynarec.c) gets r5 and r6 in memory and increments them */
+	push	{r4, r5, r6, lr}
+	mov	r2, r4
+	add	r3, sp, #4
+	bl	DynarecMacL
+	pop	{r4, r5, r6, pc}
 	.size	macl, .-macl
 
 	.align	2
 	.global	macw
 	.type	macw, %function
 macw:
-	/* r4 = sr */
-	/* r5 = multiplicand address */
-	/* r6 = multiplicand address */
-	/* r0 = return MACL */
-	/* r1 = return MACH */
-	/* direct reads for mapped memory as in macl; a word is stored as is */
-	mov	r7, r14
-	mov	r8, r0 /* MACL */
-	mov	r9, r1 /* MACH */
-	ldr	r2, .macmmptr
-	lsr	r3, r6, #12
-	ldr	r3, [r2, r3, lsl #2]
-	tst	r3, r3
-	bmi	1f
-	add	r3, r6, r3, lsl #2
-	ldrh	r10, [r3]
-	lsl	r10, r10, #16
-	b	2f
-1:
-	mov	r0, r6
-	bl	DynarecReadWord
-	/*sxth	r10, r0*/
-	lsl	r10, r0, #16
-	ldr	r2, .macmmptr
-2:
-	lsr	r3, r5, #12
-	ldr	r3, [r2, r3, lsl #2]
-	tst	r3, r3
-	bmi	3f
-	add	r3, r5, r3, lsl #2
-	ldrh	r12, [r3]
-	b	4f
-3:
-	mov	r0, r5
-	bl	DynarecReadWord
-	mov	r12, r0
-4:
-	add	r5, r5, #2
-	add	r6, r6, #2
-	lsl	r12, r12, #16
-	/*sxth	r12, r0*/
-	mov	r0, r8
-	mov	r1, r9
-	asr	r10, r10, #16
-	asr	r12, r12, #16
-	mov	r14, r7
-	smlal	r0, r1, r10, r12
-	tst	r4, #2
-	moveq	pc, lr
-macw_saturation:
-	cmn	r0, #0x80000000
-	adcs	r7, r1, #0
-	mvnne	r0, #0x80000000 /* 0x7FFFFFFF */
-	movlt	r0, #0x80000000 /* 0x80000000 */
-	mov	r1, r9
-	mov	pc, lr
+	/* as macl */
+	push	{r4, r5, r6, lr}
+	mov	r2, r4
+	add	r3, sp, #4
+	bl	DynarecMacW
+	pop	{r4, r5, r6, pc}
 	.size	macw, .-macw
-.macmmptr:
-	.word	memory_map
 
 	.align	2
 	.global	master_handle_bios

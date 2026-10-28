@@ -126,6 +126,26 @@ void DynarecMapDataArrays(void)
 }
 void DynarecWDTExec(u32 cycles) { WDTExec(CurrentSH2, cycles); }
 
+// div1 in linkage_*.s (the code compiled for DIV1 calls it with Rn, Rm and SR)
+// DIV1 Rm,Rn (as sh2int.c): returns Rn in the low and SR in the high word
+u64 DynarecDiv1(u32 rn,u32 rm,u32 sr)
+{
+  u32 old_q=(sr>>8)&1,m=(sr>>9)&1,q,tmp0,tmp1;
+  q=rn>>31;
+  rn=(rn<<1)|(sr&1);
+  tmp0=rn;
+  if(old_q==m) {
+    rn-=rm;
+    tmp1=rn>tmp0;
+  } else {
+    rn+=rm;
+    tmp1=rn<tmp0;
+  }
+  q^=tmp1^m;
+  sr=(sr&~0x101)|(q<<8)|(q==m);
+  return ((u64)sr<<32)|rn;
+}
+
 #ifdef __i386__
 #include "assem_x86.h"
 #endif
@@ -135,6 +155,72 @@ void DynarecWDTExec(u32 cycles) { WDTExec(CurrentSH2, cycles); }
 #ifdef __arm__
 #include "assem_arm.h"
 #endif
+
+// MAC.L/MAC.W operands: straight from the page when memory_map maps it, as
+// generated loads do (longs are stored as two host-order halfwords)
+static u32 mac_read_long(u32 a)
+{
+#ifdef POINTERS_64BIT
+  u64 e=memory_map[a>>12];
+  if(!(e>>63))
+#else
+  u32 e=memory_map[a>>12];
+  if(!(e&0x80000000))
+#endif
+  {
+    u32 v=*(u32 *)(pointer)(a+((pointer)e<<2));
+    return (v>>16)|(v<<16);
+  }
+  return DynarecReadLong(a);
+}
+static u32 mac_read_word(u32 a)
+{
+#ifdef POINTERS_64BIT
+  u64 e=memory_map[a>>12];
+  if(!(e>>63))
+#else
+  u32 e=memory_map[a>>12];
+  if(!(e&0x80000000))
+#endif
+    return *(u16 *)(pointer)(a+((pointer)e<<2));
+  return DynarecReadWord(a);
+}
+
+// macl and macw in linkage_*.s: MAC.L/MAC.W @Rm+,@Rn+ with addr[0]=Rm and
+// addr[1]=Rn (both incremented). Return MACL in the low and MACH in the high
+// word. Saturation (S) as the SH-1/SH-2 programming manual describes it and
+// Mednafen does: MAC.L limits the 64-bit sum to 48 bits, towards the sign of
+// the product; MAC.W adds to MACL alone, limits to 32 bits and sets bit 0 of
+// MACH on overflow.
+u64 DynarecMacL(u32 macl,u32 mach,u32 sr,u32 *addr)
+{
+  s32 n=mac_read_long(addr[1]);
+  s32 m=mac_read_long(addr[0]);
+  u64 sum=(((u64)mach<<32)|macl)+(u64)((s64)n*m);
+  addr[0]+=4;
+  addr[1]+=4;
+  if((sr&2)&&sum>0x00007FFFFFFFFFFFULL&&sum<0xFFFF800000000000ULL)
+    sum=((n^m)<0)?0xFFFF800000000000ULL:0x00007FFFFFFFFFFFULL;
+  return sum;
+}
+
+u64 DynarecMacW(u32 macl,u32 mach,u32 sr,u32 *addr)
+{
+  s32 n=(s16)mac_read_word(addr[1]);
+  s32 m=(s16)mac_read_word(addr[0]);
+  addr[0]+=2;
+  addr[1]+=2;
+  if(sr&2) {
+    s32 b=n*m;
+    s64 sum=(s64)(s32)macl+b;
+    if(sum!=(s32)sum) {
+      mach|=1;
+      sum=b<0?(s32)0x80000000:0x7FFFFFFF;
+    }
+    return ((u64)mach<<32)|(u32)sum;
+  }
+  return (((u64)mach<<32)|macl)+(u64)((s64)n*m);
+}
 
 #define MAXBLOCK 4096
 #define MAX_OUTPUT_BLOCK_SIZE 262144
