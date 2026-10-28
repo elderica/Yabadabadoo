@@ -252,7 +252,7 @@ int isclean(pointer addr)
   return 1;
 }
 
-void get_bounds(pointer addr,u32 *start,u32 *end)
+void get_bounds(pointer addr,pointer *start,pointer *end)
 {
   u32 *ptr=(u32 *)addr;
   #ifndef HAVE_ARMv7
@@ -3123,7 +3123,7 @@ int do_map_r(int s,int ar,int map,int cache,int x,int a,int shift,int c,u32 addr
   }
   return map;
 }
-int do_map_r_branch(int map, int c, u32 addr, int *jaddr)
+int do_map_r_branch(int map, int c, u32 addr, pointer *jaddr)
 {
   if(!c) {
     emit_test(map,map);
@@ -3165,7 +3165,7 @@ int do_map_w(int s,int ar,int map,int cache,int x,int c,u32 addr)
   }
   return map;
 }
-void do_map_w_branch(int map, int c, u32 addr, int *jaddr)
+void do_map_w_branch(int map, int c, u32 addr, pointer *jaddr)
 {
   if(!c||can_direct_write(addr)) {
     emit_testimm(map,0x40000000);
