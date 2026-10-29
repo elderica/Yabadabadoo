@@ -281,6 +281,27 @@ else ifeq ($(platform), miyoomini)
 	DYNAREC = 3
 	ARCH_IS_LINUX = 1
 	
+# NextUI: tg5040 (TrimUI Smart Pro, Brick, Brick Hammer: A133P),
+# tg5050 (TrimUI Smart Pro S: A523), h700 (Anbernic RG35XX/RG40XX family)
+else ifneq (,$(filter $(platform), tg5040 tg5050 h700))
+	TARGET := $(TARGET_NAME)_libretro.so
+	fpic := -fPIC
+	SHARED := -shared -Wl,--no-undefined -Wl,--version-script=link.T
+	CC = aarch64-nextui-linux-gnu-gcc
+	CXX = aarch64-nextui-linux-gnu-g++
+	CC_AS = aarch64-nextui-linux-gnu-gcc
+	AR = aarch64-nextui-linux-gnu-ar
+	FLAGS += -pthread -fomit-frame-pointer -ffast-math
+ifeq ($(platform), tg5050)
+	FLAGS += -mcpu=cortex-a55
+else
+	FLAGS += -mcpu=cortex-a53
+endif
+	LDFLAGS += -pthread
+	HAVE_SSE = 0
+	DYNAREC = 4
+	ARCH_IS_LINUX = 1
+
 # (armv8 a35, hard point, neon based) ###
 # Playstation Classic
 else ifeq ($(platform), classic_armv8_a35)
