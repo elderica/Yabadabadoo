@@ -148,6 +148,8 @@ YabauseDynarecOneFrameExec:
 	ldaddr	x28, dynarec_local
 	str	w0, [x28, #DL_M68KCYCLES]
 	str	w1, [x28, #DL_M68KCENTICYCLES]
+	ldaddr	x2, m68k_line_cycles
+	stp	w0, w1, [x2] /* m68k_line_cycles (scsp.c): the owed 68K chunks' lengths */
 	str	wzr, [x28, #DL_DECILINECOUNT]
 	ldr	x30, [x28, #DL_MASTER_IP]
 newline:
@@ -247,6 +249,17 @@ cc_interrupt:
 	.global	cc_interrupt_master
 	.type	cc_interrupt_master, %function
 cc_interrupt_master:
+	/* the 68K runs after every deciline, as in the interpreter's loop (yabause.c): decilines
+	   0-8 are owed (m68k_owed_decilines++, scsp.c runs them when due), the line's last one
+	   runs at nextline */
+	ldr	w0, [x28, #DL_DECILINECOUNT]
+	cmp	w0, #8
+	b.hi	.A0
+	ldaddr	x1, m68k_owed_decilines
+	ldr	w2, [x1]
+	add	w2, w2, #1
+	str	w2, [x1]
+.A0:
 	ldr	w0, [x28, #DL_DECILINECOUNT]
 	ldr	w19, [x28, #DL_DECILINECYCLES]
 	cmp	w0, #8
@@ -323,18 +336,7 @@ nextline:
 	and	w25, w25, w21
 	bl	Cs2Exec
 	str	w25, [x24] /* usecfrac */
-	ldaddr	x8, saved_centicycles
-	ldr	w1, [x28, #DL_M68KCENTICYCLES]
-	ldr	w2, [x8]
-	ldr	w0, [x28, #DL_M68KCYCLES]
-	add	w2, w2, w1
-	cmp	w2, #100
-	b.lo	2f
-	sub	w2, w2, #100
-	add	w0, w0, #1
-2:
-	str	w2, [x8] /* saved_centicycles */
-	bl	M68KExec
+	bl	M68KExecLastDeciline /* the owed decilines, then the line's last */
 	ldr	x30, [x28, #DL_MASTER_IP]
 	eor	w1, w22, w23 /* linecount==maxlinecount ? */
 	cbnz	w1, newline

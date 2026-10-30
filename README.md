@@ -18,16 +18,12 @@ for instance has a screen resolution that differs from other Miyoo devices. Whil
 *shouldn't* break anything I'd still be interested to hear from V4 users that scaling and 
 rendering works as expected.
 
-Version 0.3. This is an early release: expect bugs, and expect some games to run slowly or
+Version 0.2.1. This is an early release: expect bugs, and expect some games to run slowly or
 not at all.
 
-PAL ROMs can be useful for this emulator as they're rendered at a lower refresh rate, and 
-are therefore generally able to run smoother. However the implementation of proper PAL support 
-into this core is still at early stages.  
-
-Yabadabadoo is now included in CFWs such as Leaf and ROCKNIX (exciting!). While the core seems
-to work on platforms orher than Miyoo Mini handhelds they are currently not officially supported
-as I only own a Miyoo Mini and can't test for other handhelds. 
+PAL ROMs can be especially useful for this emulator as they're rendered at a lower refresh
+rate, and are therefore generally able to run smoother. However the implementation of proper 
+PAL support into this core is still at early stages.  
 
 ## Requirements
 
@@ -107,20 +103,33 @@ units. If you've ever had a black screen and a frozen Miyoo when starting a game
 creates the file again at 1600 MHz. If Yabadabadoo has always run fine on your device, your
 clock stays where it is, and you don't need to update.
 
-When updating to 0.3 save states should work without any issues, however running 0.3 save 
-states from earlier versions are unlikely to work in 0.3.
+## Beta builds
+
+Between releases, every update of the `dev` branch is published as a beta on the
+[releases page](https://github.com/ProRapSuperstarOriginalMaster/Yabadabadoo/releases), marked
+"Pre-release" and named like `0.4-beta.3`. Betas get fixes to you sooner, but they are less tested
+than releases: if you just want to play, use the latest release.
+
+A beta installs next to the release, not over it. Extract its zip at the root of the SD card: it
+adds "Saturn (beta)" to Onion's Expert section, with its own core file
+(`yabadabadoo_beta_libretro.so`) and its own settings, saves and save states (the
+`Yabadabadoo Beta` folders). Your release install and its saves are not touched. If your game
+list has no Expert tab, turn it on in Onion's Tweaks app (user interface settings: show the Expert tab). To try a
+release save state in the beta, copy it from `Saves/CurrentProfile/states/Yabadabadoo` to
+`Saves/CurrentProfile/states/Yabadabadoo Beta`; a state saved by a beta may not load in an older
+release. To remove a beta, delete `RApp/yabadabadoo_beta` and
+`RetroArch/.retroarch/cores/yabadabadoo_beta_libretro.*`.
+
+When you report a problem with a beta, include its version string (RetroArch: Information >
+Core Information), e.g. `0.4-beta.3 (Yabause 0.9.15) 1a2b3c4d5`.
 
 ## Known issues
 
-- A handful of audio effects are still not accurate compared to real hardware.
-- Games using 480i generally have performance and flickering issues
-- The game "Wipeout" specifically is a mess
-- Some users are reporting dissappearing character sprites in Castlevania Symphony of the Night. I've yet to be able to reproduce the issue
+- FMV's in some games still have some unresolved hiccups
 - The PAL version of Nights into Dreams shows a black screen instead of an initial FMV. Pressing start lets you skip it and play as normal.
+- Shining Force III has a texture flickering issue in its opening scene
 - The icon isn't the prettiest. I thought there already was an OnionOS icon for Saturn but when Claude couldn't find one it decided
 to generate its own version on its own initiative. I promise I'll clean it up manually in a later release. 
-- For one Miyoo Mini V4 user 1600MHz clock speed led to device freezes. If you experienge such freezes edit
-"cpuclock.txt" manually to a lower clock speed. 
 
 ## Building
 
@@ -138,6 +147,10 @@ https://github.com/shauninman/union-miyoomini-toolchain
 3. To make the release zip (on any machine with `zip`):
 
        packaging/make-onion-zip.sh yabause/src/libretro/yabadabadoo_libretro.so yabadabadoo.zip
+
+   A beta is built from its tag (`v0.4-beta.N`) with
+   `make platform=miyoomini -j4 BETA=1 BETA_VERSION=0.4-beta.N` and packaged with
+   `packaging/make-onion-beta-zip.sh yabause/src/libretro/yabadabadoo_beta_libretro.so 0.4-beta.N out.zip`.
 
 ## License
 
