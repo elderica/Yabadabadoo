@@ -804,14 +804,34 @@ WriteInvalidateByte:
 	.global	div1
 	.type	div1, %function
 div1:
-	/* r0 = dividend (Rn) */
-	/* r1 = divisor (Rm), kept */
-	/* r2 = sr */
-	/* DynarecDiv1 (sh2_dynarec.c) returns Rn in r0 and SR in r1 */
-	push	{r1, lr}
-	bl	DynarecDiv1
-	mov	r2, r1
-	pop	{r1, pc}
+	/* r0 = dividend (Rn), r1 = divisor (Rm), r2 = SR; returns Rn in r0 and
+	   SR in r2. As sh2int.c: q = old bit 31 of Rn, Rn = Rn<<1 | T, then
+	   Rn -= Rm if old Q == M (q ^= borrow) else Rn += Rm (q ^= carry),
+	   Q = q ^ M, T = (Q == M) */
+	lsrs	r3, r2, #1 /* carry = T */
+	adcs	r0, r0, r0 /* rn=(rn<<1)+T, carry = old bit 31 */
+	mov	r3, #0
+	adc	r3, r3, #0 /* q */
+	eor	r4, r2, r2, lsr #1 /* bit 8: old Q ^ M */
+	tst	r4, #0x100
+	bne	1f
+	subs	r0, r0, r1
+	eorcc	r3, r3, #1 /* borrow */
+	b	2f
+1:
+	adds	r0, r0, r1
+	eorcs	r3, r3, #1 /* carry */
+2:
+	tst	r2, #0x200
+	eorne	r3, r3, #1 /* Q = q ^ M */
+	bic	r2, r2, #0x100
+	bic	r2, r2, #1
+	orr	r2, r2, r3, lsl #8
+	eor	r4, r3, r2, lsr #9 /* bit 0: Q ^ M */
+	and	r4, r4, #1
+	eor	r4, r4, #1
+	orr	r2, r2, r4 /* T = (Q == M) */
+	mov	pc, lr
 	.size	div1, .-div1
 
 	.align	2
@@ -819,29 +839,136 @@ div1:
 	.type	macl, %function
 macl:
 	/* r4 = sr */
-	/* r5 = multiplicand address (Rm) */
-	/* r6 = multiplicand address (Rn) */
+	/* r5 = multiplicand address */
+	/* r6 = multiplicand address */
 	/* r0 = return MACL */
 	/* r1 = return MACH */
-	/* DynarecMacL (sh2_dynarec.c) gets r5 and r6 in memory and increments them */
-	push	{r4, r5, r6, lr}
-	mov	r2, r4
-	add	r3, sp, #4
-	bl	DynarecMacL
-	pop	{r4, r5, r6, pc}
+	/* Operands in mapped memory (work RAM, BIOS, the data array) are read
+	   directly, as generated loads do: memory_map[addr>>12] >= 0 gives the
+	   host address addr + entry*4, a long there is stored halfword-swapped.
+	   Anything else goes through DynarecReadLong, in the same order. */
+	mov	r7, r14
+	mov	r8, r0 /* MACL */
+	mov	r9, r1 /* MACH */
+	ldr	r2, .macmmptr
+	lsr	r3, r6, #12
+	ldr	r3, [r2, r3, lsl #2]
+	tst	r3, r3
+	bmi	1f
+	ldr	r10, [r6, r3, lsl #2]
+	ror	r10, r10, #16
+	b	2f
+1:
+	mov	r0, r6
+	bl	DynarecReadLong
+	mov	r10, r0
+	ldr	r2, .macmmptr
+2:
+	lsr	r3, r5, #12
+	ldr	r3, [r2, r3, lsl #2]
+	tst	r3, r3
+	bmi	3f
+	ldr	r12, [r5, r3, lsl #2]
+	ror	r12, r12, #16
+	b	4f
+3:
+	mov	r0, r5
+	bl	DynarecReadLong
+	mov	r12, r0
+4:
+	add	r5, r5, #4
+	add	r6, r6, #4
+	mov	r0, r8
+	mov	r1, r9
+	mov	r14, r7
+	smlal	r0, r1, r10, r12
+	tst	r4, #2
+	moveq	pc, lr
+macl_saturation:
+	/* S=1: a sum outside 48 bits is limited towards the sign of the
+	   product (the manual's text, and Mednafen), also when the 64-bit sum
+	   wrapped */
+	add	r7, r1, #0x8000
+	cmp	r7, #0x10000
+	movlo	pc, lr /* MACH within -0x8000..0x7FFF */
+	teq	r10, r12
+	mov	r7, #0x8000
+	movmi	r0, #0
+	rsbmi	r1, r7, #0 /* 0xFFFF8000 */
+	mvnpl	r0, #0
+	subpl	r1, r7, #1 /* 0x00007FFF */
+	mov	pc, lr
 	.size	macl, .-macl
 
 	.align	2
 	.global	macw
 	.type	macw, %function
 macw:
-	/* as macl */
-	push	{r4, r5, r6, lr}
-	mov	r2, r4
-	add	r3, sp, #4
-	bl	DynarecMacW
-	pop	{r4, r5, r6, pc}
+	/* r4 = sr */
+	/* r5 = multiplicand address */
+	/* r6 = multiplicand address */
+	/* r0 = return MACL */
+	/* r1 = return MACH */
+	/* direct reads for mapped memory as in macl; a word is stored as is */
+	mov	r7, r14
+	mov	r8, r0 /* MACL */
+	mov	r9, r1 /* MACH */
+	ldr	r2, .macmmptr
+	lsr	r3, r6, #12
+	ldr	r3, [r2, r3, lsl #2]
+	tst	r3, r3
+	bmi	1f
+	add	r3, r6, r3, lsl #2
+	ldrh	r10, [r3]
+	lsl	r10, r10, #16
+	b	2f
+1:
+	mov	r0, r6
+	bl	DynarecReadWord
+	/*sxth	r10, r0*/
+	lsl	r10, r0, #16
+	ldr	r2, .macmmptr
+2:
+	lsr	r3, r5, #12
+	ldr	r3, [r2, r3, lsl #2]
+	tst	r3, r3
+	bmi	3f
+	add	r3, r5, r3, lsl #2
+	ldrh	r12, [r3]
+	b	4f
+3:
+	mov	r0, r5
+	bl	DynarecReadWord
+	mov	r12, r0
+4:
+	add	r5, r5, #2
+	add	r6, r6, #2
+	lsl	r12, r12, #16
+	/*sxth	r12, r0*/
+	mov	r0, r8
+	mov	r1, r9
+	asr	r10, r10, #16
+	asr	r12, r12, #16
+	mov	r14, r7
+	tst	r4, #2
+	bne	macw_saturation
+	smlal	r0, r1, r10, r12
+	mov	pc, lr
+macw_saturation:
+	/* S=1: MACL alone takes the sum; on overflow it is limited towards the
+	   sign of the product and bit 0 of MACH is set (the manual's text, and
+	   Mednafen) */
+	mul	r7, r10, r12
+	adds	r0, r0, r7
+	movvc	pc, lr
+	orr	r1, r1, #1
+	cmp	r7, #0
+	mvnge	r0, #0x80000000 /* 0x7FFFFFFF */
+	movlt	r0, #0x80000000
+	mov	pc, lr
 	.size	macw, .-macw
+.macmmptr:
+	.word	memory_map
 
 	.align	2
 	.global	master_handle_bios

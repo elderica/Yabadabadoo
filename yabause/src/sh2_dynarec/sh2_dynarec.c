@@ -126,7 +126,8 @@ void DynarecMapDataArrays(void)
 }
 void DynarecWDTExec(u32 cycles) { WDTExec(CurrentSH2, cycles); }
 
-// div1 in linkage_*.s (the code compiled for DIV1 calls it with Rn, Rm and SR)
+// div1 in linkage_arm64.s (the code compiled for DIV1 calls it with Rn, Rm and SR;
+// linkage_arm.s does the same in assembly)
 // DIV1 Rm,Rn (as sh2int.c): returns Rn in the low and SR in the high word
 u64 DynarecDiv1(u32 rn,u32 rm,u32 sr)
 {
@@ -199,12 +200,12 @@ static u32 mac_read_word(u32 a)
   return DynarecReadWord(a);
 }
 
-// macl and macw in linkage_*.s: MAC.L/MAC.W @Rm+,@Rn+ with addr[0]=Rm and
-// addr[1]=Rn (both incremented). Return MACL in the low and MACH in the high
-// word. Saturation (S) as the SH-1/SH-2 programming manual describes it and
-// Mednafen does: MAC.L limits the 64-bit sum to 48 bits, towards the sign of
-// the product; MAC.W adds to MACL alone, limits to 32 bits and sets bit 0 of
-// MACH on overflow.
+// macl and macw in linkage_arm64.s (linkage_arm.s does them in assembly):
+// MAC.L/MAC.W @Rm+,@Rn+ with addr[0]=Rm and addr[1]=Rn (both incremented).
+// Return MACL in the low and MACH in the high word. Saturation (S) as the
+// SH-1/SH-2 programming manual describes it and Mednafen does: MAC.L limits
+// the 64-bit sum to 48 bits, towards the sign of the product; MAC.W adds to
+// MACL alone, limits to 32 bits and sets bit 0 of MACH on overflow.
 u64 DynarecMacL(u32 macl,u32 mach,u32 sr,u32 *addr)
 {
   s32 n=mac_read_long(addr[1]);
