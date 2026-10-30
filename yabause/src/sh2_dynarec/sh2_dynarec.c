@@ -6349,10 +6349,9 @@ static void cull_unused_regs(void)
              itype[i+1]==RMW || itype[i+1]==PCREL ||
              itype[i+1]==SYSTEM || source[i]==0x002B /* RTE */ )
             temp1=MOREG;
-          // MAC.L/MAC.W in the delay slot: the accumulator in branch_regs.
-          // Not in regs[i]: the slot loads it itself, and kept there while
-          // culled before the branch it would be a register never loaded
-          // (with a stale dirty bit, written back as MACH/MACL).
+          // MAC.L/MAC.W in the delay slot: the accumulator (only then: with
+          // another slot, MACH/MACL kept here while culled before the branch
+          // would be registers never loaded, written back as garbage)
           if(itype[i+1]==COMPLEX&&(opcode[i+1]|4)==4&&opcode2[i+1]==15) {
             temp1=MACH;
             temp2=MACL;
@@ -6363,7 +6362,8 @@ static void cull_unused_regs(void)
              regs[i].regmap[hr]!=rt1[i+1] && regs[i].regmap[hr]!=rt2[i+1] &&
              regs[i].regmap[hr]!=RHASH && regs[i].regmap[hr]!=RHTBL &&
              regs[i].regmap[hr]!=RTEMP && regs[i].regmap[hr]!=PTEMP &&
-             regs[i].regmap[hr]!=CCREG )
+             regs[i].regmap[hr]!=CCREG &&
+             regs[i].regmap[hr]!=temp1 && regs[i].regmap[hr]!=temp2 )
           {
             regs[i].regmap[hr]=-1;
             regs[i].isdoingcp&=~(1<<hr);
